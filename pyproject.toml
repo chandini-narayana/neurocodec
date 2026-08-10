@@ -1,0 +1,51 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "neurocodec"
+version = "0.1.0"
+description = "Neuromorphic-inspired spike-driven video codec: DVS event simulation, learned entropy encoding, and ConvLSTM frame reconstruction."
+readme = "README.md"
+license = { file = "LICENSE" }
+authors = [{ name = "Chandini Narayana", email = "chandininarayana@example.com" }]
+keywords = ["neuromorphic", "video-compression", "event-camera", "dvs", "convlstm", "codec"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Topic :: Scientific/Engineering :: Image Processing",
+]
+requires-python = ">=3.10"
+dependencies = [
+    "numpy>=1.24",
+    "opencv-python>=4.8",
+    "torch>=2.0",
+    "torchvision>=0.15",
+    "scikit-image>=0.21",
+]
+
+[project.optional-dependencies]
+demo = ["gradio>=4.0"]
+dev  = ["pytest>=7.0", "pytest-cov", "hatch", "twine"]
+
+[project.scripts]
+neurocodec = "neurocodec.cli:main"
+
+[project.urls]
+Homepage   = "https://github.com/chandini-narayana/neurocodec"
+Repository = "https://github.com/chandini-narayana/neurocodec"
+Demo       = "https://huggingface.co/spaces/chandininarayana/neurocodec"
+Paper      = "https://arxiv.org/abs/XXXX.XXXXX"
+
+[tool.hatch.build.targets.wheel]
+packages = ["neurocodec"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts   = "-v --tb=short"

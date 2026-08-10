@@ -1,0 +1,58 @@
+name: Benchmark
+
+on:
+  schedule:
+    - cron: "0 3 * * 1"   # Every Monday at 03:00 UTC
+  workflow_dispatch:        # Also triggerable manually from GitHub UI
+
+jobs:
+  benchmark:
+    name: Threshold Sweep Benchmark
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends \
+            libgl1 libglib2.0-0 ffmpeg
+
+      - name: Install neurocodec
+        run: |
+          pip install --upgrade pip
+          pip install -e ".[dev]"
+
+      - name: Generate synthetic test clip
+        run: |
+          python - <<'EOF'
+          import cv2, numpy as np
+          fourcc = cv2.VideoWriter_fourcc(*"mp4v")
+          w = cv2.VideoWriter("/tmp/bench.mp4", fourcc, 30.0, (320, 240))
+          for i in range(150):
+              f = np.zeros((240, 320, 3), dtype=np.uint8)
+              x = int((i / 150) * 310)
+              f[80:160, x:x+30] = 255
+              w.write(f)
+          w.release()
+          print("Synthetic clip created: /tmp/bench.mp4")
+          EOF
+
+      - name: Run threshold sweep benchmark
+        run: |
+          neurocodec benchmark /tmp/bench.mp4 --output benchmark_results.json
+          cat benchmark_results.json
+
+      - name: Upload benchmark artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: benchmark-results-${{ github.run_number }}
+          path: benchmark_results.json
+          retention-days: 90
