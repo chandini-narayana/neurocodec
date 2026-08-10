@@ -1,4 +1,4 @@
-# NeuroCodec 🧠⚡
+# NeuroCodec 
 
 **Neuromorphic-Inspired Spike-Driven Video Compression**
 
@@ -204,10 +204,10 @@ If you use NeuroCodec in your research, please cite:
 
 ## Links
 
-- 🔴 **Live Demo:** [huggingface.co/spaces/chandininarayana/neurocodec](https://huggingface.co/spaces/chandininarayana/neurocodec)
-- 📦 **PyPI:** [pypi.org/project/neurocodec](https://pypi.org/project/neurocodec/)
-- 📄 **Paper:** [arXiv:XXXX.XXXXX](https://arxiv.org/abs/XXXX.XXXXX)
-- 🤗 **Model:** [huggingface.co/chandininarayana/neurocodec](https://huggingface.co/chandininarayana/neurocodec)
+-  **Live Demo:** [huggingface.co/spaces/chandininarayana/neurocodec](https://huggingface.co/spaces/chandininarayana/neurocodec)
+-  **PyPI:** [pypi.org/project/neurocodec](https://pypi.org/project/neurocodec/)
+-  **Paper:** [arXiv:XXXX.XXXXX](https://arxiv.org/abs/XXXX.XXXXX)
+-  **Model:** [huggingface.co/chandininarayana/neurocodec](https://huggingface.co/chandininarayana/neurocodec)
 
 ---
 
