@@ -8,12 +8,13 @@ Generates side-by-side frames: Original | H.264 | NeuroCodec
 for use as Figure 3 in the paper.
 
 Usage:
-    python eval/qualitative.py --video dashcam.mp4--output eval/results/qual/
+    python eval/qualitative.py --video dashcam.mp4 --output eval/results/qual/
 """
 
 from __future__ import annotations
 
 import argparse
+import shutil
 import subprocess
 import tempfile
 from pathlib import Path
@@ -70,6 +71,9 @@ def main() -> None:
                    help="Comparison bitrate in kbps (default 200)")
     p.add_argument("--threshold", type=float, default=0.2,
                    help="NeuroCodec threshold (default 0.2)")
+    p.add_argument("--weights", default=None, help="Decoder weights (.pt)")
+    p.add_argument("--allow-random", action="store_true",
+                   help="Use an untrained decoder (output is meaningless)")
     p.add_argument("--n-frames", type=int, default=5,
                    help="Number of comparison frames to extract")
     args = p.parse_args()
@@ -81,11 +85,15 @@ def main() -> None:
     with tempfile.TemporaryDirectory() as tmp:
         # ── Encode H.264 baseline ────────────────────────────────────────
         h264_path = Path(tmp) / "h264.mp4"
-        subprocess.run([
+        if shutil.which("ffmpeg") is None:
+            raise SystemExit("ffmpeg not found on PATH (needed for the H.264 baseline)")
+        res = subprocess.run([
             "ffmpeg", "-y", "-i", str(video_path),
             "-c:v", "libx264", "-b:v", f"{args.bitrate}k",
             "-an", str(h264_path),
         ], capture_output=True)
+        if res.returncode != 0:
+            raise SystemExit("ffmpeg H.264 encode failed:\n" + res.stderr.decode(errors="replace"))
 
         # ── Encode NeuroCodec ────────────────────────────────────────────
         from neurocodec.encoder import VoxelEncoder, NECReader
@@ -98,18 +106,18 @@ def main() -> None:
 
         reader = NECReader(nec_path)
         device = torch.device("cpu")
-        model  = load_decoder(device=device, n_bins=reader.n_bins)
-        dense  = reader.to_dense()
+        model  = load_decoder(args.weights, device=device, n_bins=reader.n_bins,
+                              require_weights=not args.allow_random)
 
         recon_path = Path(tmp) / "neurocodec_recon.mp4"
         H, W = reader.height, reader.width
         writer_nc = cv2.VideoWriter(
             str(recon_path), cv2.VideoWriter_fourcc(*"mp4v"), 30.0, (W, H), False)
         model.reset_state()
-        with torch.no_grad():
-            for t in range(dense.shape[0]):
-                v   = torch.from_numpy(dense[t]).unsqueeze(0)
-                out = model(v).squeeze().cpu().numpy()
+        with torch.inference_mode():
+            for voxel in reader.iter_dense():
+                v   = torch.from_numpy(voxel).unsqueeze(0)
+                out = model(v)[0, 0].clamp(0, 1).cpu().numpy()
                 writer_nc.write((out * 255).astype(np.uint8))
         writer_nc.release()
 

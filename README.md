@@ -1,208 +1,166 @@
 # NeuroCodec 
 
-**Neuromorphic-Inspired Spike-Driven Video Compression**
+**Neuromorphic-Inspired Spike-Driven Video Compression (research prototype)**
 
 [![CI](https://github.com/chandini-narayana/neurocodec/actions/workflows/test.yml/badge.svg)](https://github.com/chandini-narayana/neurocodec/actions/workflows/test.yml)
 [![Benchmark](https://github.com/chandini-narayana/neurocodec/actions/workflows/benchmark.yml/badge.svg)](https://github.com/chandini-narayana/neurocodec/actions/workflows/benchmark.yml)
-[![PyPI](https://img.shields.io/pypi/v/neurocodec)](https://pypi.org/project/neurocodec/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![arXiv](https://img.shields.io/badge/arXiv-XXXX.XXXXX-b31b1b.svg)](https://arxiv.org/abs/XXXX.XXXXX)
-[![HuggingFace](https://img.shields.io/badge/🤗-Demo-blue)](https://huggingface.co/spaces/chandininarayana/neurocodec)
 
-> A software DVS event simulator + voxel-grid entropy encoder + ConvLSTM frame reconstructor.
-> Works on any standard camera input — no $5,000 event-camera hardware required.
+> A software DVS event simulator + voxel-grid sparse encoder + ConvLSTM frame reconstructor.
+> Works on any standard camera input — no event-camera hardware required.
 
 ---
 
-## What is NeuroCodec?
+## Status — please read
 
-NeuroCodec simulates how a **Dynamic Vision Sensor (DVS)** would perceive a video:
-instead of capturing full frames, it fires per-pixel events when light intensity changes.
-These sparse events are far cheaper to encode than full frames, and a trained
-ConvLSTM decoder reconstructs high-quality video from them.
+This is an **early research prototype**:
+
+- ✅ DVS simulator, voxel encoder, `.nec` container, CLI, ONNX export and tests work.
+- ⚠️ **No trained decoder weights are released yet.** `neurocodec decode` refuses to run
+  without them (pass `--allow-random` only to test the pipeline — the output is a constant
+  gray image).
+- ⚠️ **No rate-distortion results have been measured yet.** Earlier drafts of this README
+  and the paper listed SSIM/PSNR numbers vs H.264/H.265/AV1; those were placeholders, not
+  measurements, and have been removed. `eval/benchmark_rd.py` produces real numbers once
+  weights exist.
+- ⚠️ **Compression is currently *not* competitive with H.264.** Measured on the 480×270,
+  901-frame `sample.mp4` (1.5 MB H.264): `.nec` is 9.7 MB at `--kfrac 0.5` and 2.0 MB at
+  `--kfrac 0.1`. Event data from natural video is dense; the research question is whether
+  a learned decoder can make a very sparse event representation worthwhile.
+- ⚠️ **Events only encode *changes*.** Static content (and absolute brightness) is not
+  recoverable from events alone, so a decoder trained only on voxels will struggle there.
+  Sending periodic key-frames is the obvious next step and is not implemented.
 
 ```
-Input video  →  DVS simulator  →  Voxel grid  →  .nec binary  →  ConvLSTM decoder  →  Reconstructed video
-640×480 MP4      (C=0.2)         [5×480×640]     ~108 kbps           (SSIM 0.703)        grayscale MP4
+Input video → DVS simulator → Voxel grid [B×H×W] → Top-K → int8 + delta + DEFLATE → .nec → ConvLSTM decoder → grayscale video
 ```
-
-**Key results** (dashcam sequences, ~200 kbps):
-
-| Codec | SSIM ↑ | PSNR (dB) ↑ |
-|-------|--------|-------------|
-| H.264 | 0.612 | 26.8 |
-| H.265 | 0.641 | 27.9 |
-| AV1   | 0.658 | 28.3 |
-| **NeuroCodec** | **0.703** | **30.1** |
 
 ---
 
 ## Installation
 
+From source (the package is not published on PyPI yet):
+
 ```bash
-pip install neurocodec
+git clone https://github.com/chandini-narayana/neurocodec
+cd neurocodec
+pip install -e ".[dev]"
 ```
 
-Requires Python ≥ 3.10, PyTorch ≥ 2.0.
+Requires Python ≥ 3.10 and PyTorch ≥ 2.0. Optional extras: `demo` (Gradio),
+`eval` (matplotlib), `onnx` (onnx + onnxruntime), `train` (jupyter), `release` (hatch, twine).
 
 ---
 
-## Quick Start
+## Quick start
 
-### Encode a video
 ```bash
-neurocodec encode dashcam.mp4 dashcam.nec --threshold 0.2
+neurocodec simulate dashcam.mp4 --output events.mp4        # visualise DVS events
+neurocodec encode   dashcam.mp4 dashcam.nec --threshold 0.2 --kfrac 0.5
+neurocodec info     dashcam.nec
+neurocodec decode   dashcam.nec out.mp4 --weights decoder_v1.pt   # needs trained weights
+neurocodec benchmark dashcam.mp4 --thresholds 0.1,0.2,0.5   # events vs threshold
 ```
 
-### Decode back to video
-```bash
-neurocodec decode dashcam.nec reconstructed.mp4
-```
-
-### Visualise events
-```bash
-neurocodec simulate dashcam.mp4 --output events.mp4
-```
+| Flag | Meaning |
+|------|---------|
+| `--threshold C` | log-intensity change that fires an event (lower → more events) |
+| `--bins B` | temporal bins per voxel (bin *k* of frame *t* = events of frame *t−B+1+k*) |
+| `--kfrac K` | fraction of the non-zero voxel cells kept (strongest first) |
 
 ### Python API
+
 ```python
 from neurocodec import simulate, encode, decode
 
-# Simulate DVS events
 events = simulate("dashcam.mp4", threshold=0.2)
-print(f"Events: {len(events):,} | Density: {events.density():.4f}")
+print(f"Events: {len(events):,} | events/pixel/frame: {events.density():.4f}")
 
-# Encode to .nec
-stats = encode("dashcam.mp4", "dashcam.nec", threshold=0.2)
-print(f"Compression: {stats['compression_ratio']:.1f}x | {stats['file_size_kb']:.1f} KB")
+stats = encode("dashcam.mp4", "dashcam.nec", threshold=0.2, k_frac=0.5)
+print(f"{stats['file_size_kb']:.1f} KB | {stats['compression_ratio']:.2f}x vs input file")
 
-# Decode to video
-decode("dashcam.nec", "reconstructed.mp4")
+decode("dashcam.nec", "reconstructed.mp4", weights_path="decoder_v1.pt")
 ```
+
+### The `.nec` format (v2)
+
+Header (21 bytes: magic `NEC\x02`, width, height, bins, threshold, frames, fps) followed by
+one zlib-compressed record per frame. Each record stores the sorted indices of the kept voxel
+cells as delta-coded byte planes plus int8-quantised values. Details in
+[neurocodec/encoder.py](neurocodec/encoder.py). Version-1 files are still readable.
 
 ---
 
-## Repository Structure
+## Repository structure
 
 ```
-neurocodec/
-├── neurocodec/              # pip-installable package
-│   ├── __init__.py          # public API: encode(), decode(), simulate()
-│   ├── simulator.py         # DVS event extractor
-│   ├── encoder.py           # voxel grid + entropy coder → .nec
-│   ├── convlstm.py          # ConvLSTM cell and stack
-│   ├── decoder.py           # ConvLSTM frame reconstructor
-│   ├── cli.py               # neurocodec CLI
-│   └── weights/             # place decoder_v1.pt here after training
-├── tests/                   # pytest test suite
-├── training/
-│   └── train_decoder.ipynb  # Google Colab training notebook (free T4)
-├── eval/
-│   ├── benchmark_rd.py      # Rate-distortion curves vs H.264/H.265/AV1
-│   └── qualitative.py       # Side-by-side frame comparisons
-├── demo/
-│   └── app.py               # HuggingFace Spaces Gradio demo
-├── cpp_runtime/             # ONNX Runtime C++ decoder (2-5x faster)
-│   ├── CMakeLists.txt
-│   └── infer.cpp
-├── paper/
-│   └── neurocodec.tex       # CVPR workshop paper (LaTeX)
-├── assets/
-│   ├── MODEL_CARD.md        # HuggingFace model card
-│   └── DATASET_CARD.md      # HuggingFace dataset card
-├── docs/
-│   ├── TRAINING.md
-│   └── PUBLISHING.md
-└── pyproject.toml
+neurocodec/        pip-installable package (simulator, encoder, convlstm, decoder, cli)
+tests/             pytest suite (unit + end-to-end + CLI)
+training/          Colab notebook that trains the decoder
+eval/              rate-distortion benchmark, qualitative figures, ONNX export
+demo/              Gradio app (HuggingFace Spaces)
+cpp_runtime/       ONNX Runtime C++ decoder (stateful, reads .nec v1/v2)
+paper/             LaTeX draft (results are placeholders — see the banner in the PDF)
+docs/, assets/     training/publishing notes, model & dataset cards
 ```
 
 ---
 
 ## Training
 
-Train the ConvLSTM decoder on Google Colab (free T4 GPU, ~3 hours):
-
+Train the decoder on Google Colab (free T4):
 [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/chandini-narayana/neurocodec/blob/main/training/train_decoder.ipynb)
 
-See [docs/TRAINING.md](docs/TRAINING.md) for full details.
-
----
+See [docs/TRAINING.md](docs/TRAINING.md). Put the resulting `decoder_v1.pt` in
+`neurocodec/weights/` (git-ignored) or pass `--weights`.
 
 ## Benchmarking
 
 ```bash
-# Rate-distortion curves vs H.264, H.265, AV1
-python eval/benchmark_rd.py --video dashcam.mp4 --output eval/results/
-
-# Threshold sweep
-neurocodec benchmark dashcam.mp4 --thresholds 0.05,0.1,0.2,0.3,0.5
+pip install -e ".[eval]"
+python eval/benchmark_rd.py --video dashcam.mp4 --weights decoder_v1.pt --output eval/results/
 ```
 
----
+Needs `ffmpeg` (libx264/libx265/libaom-av1) on `PATH` for the baselines.
 
-## C++ Runtime (2–5× faster than PyTorch)
+## C++ runtime
 
 ```bash
-# Export model first
-python -c "
-from neurocodec.decoder import ConvLSTMDecoder
-import torch
-model = ConvLSTMDecoder(); model.eval()
-torch.onnx.export(model, torch.zeros(1,5,240,320), 'decoder.onnx', opset_version=17)
-"
-
-# Build C++ decoder
-cd cpp_runtime && mkdir build && cd build
-cmake .. && cmake --build . --config Release
-
-# Run
-./nc_decode --model decoder.onnx --input clip.nec --benchmark
+pip install -e ".[onnx]"
+python eval/export_onnx.py --weights decoder_v1.pt --output decoder.onnx --height 270 --width 480
+cd cpp_runtime && cmake -B build && cmake --build build --config Release
+./build/nc_decode --model ../decoder.onnx --input clip.nec --benchmark
 ```
 
-See [cpp_runtime/README.md](cpp_runtime/README.md) for full build instructions.
-
----
+Requires CMake ≥ 3.18, a C++17 compiler and zlib. See [cpp_runtime/README.md](cpp_runtime/README.md).
+The C++ runtime has not been compiled in CI yet.
 
 ## Development
 
 ```bash
-git clone https://github.com/chandini-narayana/neurocodec
-cd neurocodec
-pip install -e ".[dev]"
-pytest                        # run full test suite
+pip install -e ".[dev,onnx]"
+ruff check neurocodec eval demo tests
+pytest
 ```
-
----
-
-## Publishing
-
-```bash
-hatch build && twine upload dist/*     # PyPI
-# HuggingFace Spaces: upload demo/app.py + demo/requirements.txt
-```
-
-See [docs/PUBLISHING.md](docs/PUBLISHING.md) for step-by-step instructions.
-
----
 
 ## Citation
 
-If you use NeuroCodec in your research, please cite:
-
 ```bibtex
 @misc{narayana2026neurocodec,
-  title   = {NeuroCodec: Neuromorphic-Inspired Spike-Driven Video Compression
-              with Learned ConvLSTM Reconstruction},
-  author  = {Narayana, Chandini},
-  year    = {2026},
-  url     = {https://github.com/chandini-narayana/neurocodec},
-  note    = {arXiv:XXXX.XXXXX}
+  title  = {NeuroCodec: Neuromorphic-Inspired Spike-Driven Video Compression
+            with Learned ConvLSTM Reconstruction},
+  author = {Narayana, Chandini},
+  year   = {2026},
+  url    = {https://github.com/chandini-narayana/neurocodec},
+  note   = {Work in progress}
 }
 ```
 
 ---
 
 ## Links
+
+Planned locations; not all of these are live yet (the package is not on PyPI and there is no arXiv id or released model).
 
 -  **Live Demo:** [huggingface.co/spaces/chandininarayana/neurocodec](https://huggingface.co/spaces/chandininarayana/neurocodec)
 -  **PyPI:** [pypi.org/project/neurocodec](https://pypi.org/project/neurocodec/)

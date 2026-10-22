@@ -2,7 +2,11 @@
 # Copyright (c) 2026 Chandini Narayana
 # SPDX-License-Identifier: MIT
 """
-Export ConvLSTM decoder to ONNX format.
+Export the ConvLSTM decoder to ONNX (single step with explicit recurrent state).
+
+The exported graph takes ``voxel`` plus the ConvLSTM states ``h0, c0, h1, c1, ...``
+and returns ``frame`` plus the updated states, so the C++ runtime can decode a
+clip frame by frame exactly like the PyTorch path (see ``DecoderStep``).
 
 Usage:
     python eval/export_onnx.py --weights neurocodec/weights/decoder_v1.pt \
@@ -19,12 +23,11 @@ from __future__ import annotations
 
 import argparse
 import logging
-from pathlib import Path
 
+import numpy as np
 import torch
 
 logger = logging.getLogger(__name__)
-logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
 
 
 def export(
@@ -34,77 +37,48 @@ def export(
     height: int = 240,
     width:  int = 320,
     opset:  int = 17,
+    allow_random: bool = False,
 ) -> None:
-    from neurocodec.decoder import ConvLSTMDecoder, load_decoder
+    from neurocodec.decoder import DecoderStep, export_onnx, load_decoder
 
-    device = torch.device("cpu")
-    model  = load_decoder(weights_path, n_bins=n_bins, device=device)
-    model.eval()
-    model.reset_state()
-
-    dummy = torch.zeros(1, n_bins, height, width)
-
+    model = load_decoder(weights_path, n_bins=n_bins, device=torch.device("cpu"),
+                         require_weights=not allow_random)
     logger.info("Exporting to ONNX (opset %d) ...", opset)
-    torch.onnx.export(
-        model,
-        dummy,
-        output_path,
-        input_names=["voxel"],
-        output_names=["frame"],
-        dynamic_axes={
-            "voxel": {0: "batch", 2: "height", 3: "width"},
-            "frame": {0: "batch", 2: "height", 3: "width"},
-        },
-        opset_version=opset,
-        verbose=False,
-    )
-    logger.info("Saved: %s", output_path)
+    in_names = export_onnx(model, output_path, height=height, width=width, opset=opset)
+    logger.info("Saved: %s (inputs: %s)", output_path, ", ".join(in_names))
 
-    # Verify
     try:
         import onnxruntime as ort
-        sess = ort.InferenceSession(output_path)
-        out  = sess.run(["frame"], {"voxel": dummy.numpy()})
-        logger.info("Verification OK — output shape: %s", out[0].shape)
     except ImportError:
-        logger.warning("onnxruntime not installed — skipping verification.")
-        logger.warning("Install: pip install onnxruntime")
+        logger.warning("onnxruntime not installed - skipping verification. "
+                       "Install: pip install onnxruntime")
+        return
 
-    # Measure PyTorch vs ONNX latency
-    try:
-        import time, onnxruntime as ort
-        sess = ort.InferenceSession(output_path)
-        inp  = dummy.numpy()
-
-        # Warm-up
-        for _ in range(5):
-            with torch.no_grad():
-                model(dummy)
-            sess.run(["frame"], {"voxel": inp})
-
-        N = 50
-        t0 = time.perf_counter()
-        for _ in range(N):
-            with torch.no_grad():
-                model(dummy)
-        pt_ms = (time.perf_counter() - t0) / N * 1000
-
-        t0 = time.perf_counter()
-        for _ in range(N):
-            sess.run(["frame"], {"voxel": inp})
-        ort_ms = (time.perf_counter() - t0) / N * 1000
-
-        logger.info("PyTorch CPU:     %.1f ms/frame", pt_ms)
-        logger.info("ONNX Runtime:    %.1f ms/frame", ort_ms)
-        logger.info("Speedup:         %.1fx", pt_ms / ort_ms)
-    except Exception as e:
-        logger.warning("Could not benchmark: %s", e)
+    # Verify: run 3 frames through PyTorch (stateful) and ONNX (explicit state).
+    sess = ort.InferenceSession(output_path, providers=["CPUExecutionProvider"])
+    step = DecoderStep(model)
+    rng = np.random.default_rng(0)
+    state = {n: np.zeros((1, ch, height, width), np.float32)
+             for i, ch in enumerate(step.state_channels) for n in (f"h{i}", f"c{i}")}
+    out_names = [o.name for o in sess.get_outputs()]
+    model.reset_state()
+    max_err = 0.0
+    with torch.inference_mode():
+        for _ in range(3):
+            v = rng.standard_normal((1, n_bins, height, width)).astype(np.float32)
+            ref = model(torch.from_numpy(v)).numpy()
+            outs = sess.run(out_names, {"voxel": v, **state})
+            max_err = max(max_err, float(np.abs(outs[0] - ref).max()))
+            state = dict(zip(in_names[1:], outs[1:]))
+    logger.info("Verification: max |ONNX - PyTorch| over 3 stateful frames = %.2e", max_err)
+    if max_err > 1e-3:
+        raise SystemExit("ONNX output does not match PyTorch")
 
 
 def main() -> None:
+    logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
     p = argparse.ArgumentParser(description="Export ConvLSTM decoder to ONNX")
-    p.add_argument("--weights", default=None,
-                   help="Path to decoder_v1.pt (optional)")
+    p.add_argument("--weights", default=None, help="Path to decoder_v1.pt")
     p.add_argument("--output",  default="decoder.onnx",
                    help="Output ONNX file (default: decoder.onnx)")
     p.add_argument("--n-bins",  type=int, default=5,
@@ -115,13 +89,12 @@ def main() -> None:
                    help="Dummy input width for tracing (default 320)")
     p.add_argument("--opset",   type=int, default=17,
                    help="ONNX opset version (default 17)")
+    p.add_argument("--allow-random", action="store_true",
+                   help="Export an untrained model (for testing the toolchain)")
     args = p.parse_args()
 
-    export(
-        args.weights, args.output,
-        n_bins=args.n_bins, height=args.height,
-        width=args.width, opset=args.opset,
-    )
+    export(args.weights, args.output, n_bins=args.n_bins, height=args.height,
+           width=args.width, opset=args.opset, allow_random=args.allow_random)
 
 
 if __name__ == "__main__":

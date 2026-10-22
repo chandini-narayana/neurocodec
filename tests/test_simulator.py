@@ -2,7 +2,6 @@
 # SPDX-License-Identifier: MIT
 """Tests for DVS event simulator."""
 
-import numpy as np
 import pytest
 
 from neurocodec.simulator import DVSSimulator, EventStream, render_event_frame

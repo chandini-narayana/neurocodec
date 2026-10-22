@@ -13,61 +13,55 @@ pipeline_tag: video-to-video
 
 # NeuroCodec — ConvLSTM Decoder v1
 
-**Model:** `chandininarayana/neurocodec`  
-**Author:** Chandini Narayana (2026)  
-**License:** MIT
+**Author:** Chandini Narayana (2026) · **License:** MIT
+
+> **Status: weights not released yet.** This card describes the intended model. No
+> trained checkpoint or measured quality numbers exist yet; the table that used to be
+> here contained placeholders and was removed.
 
 ## What is this?
 
-This is the ConvLSTM video frame reconstructor for
-[NeuroCodec](https://github.com/chandini-narayana/neurocodec),
-a neuromorphic-inspired video codec.
+The ConvLSTM frame reconstructor for
+[NeuroCodec](https://github.com/chandini-narayana/neurocodec). Given the sparse voxel
+grid `[B×H×W]` of simulated DVS events (decoded from a `.nec` file) it reconstructs the
+corresponding grayscale frame. The ConvLSTM state carries over between frames.
 
-Given a sparse voxel grid of DVS events (shape `[B×H×W]`),
-it reconstructs the corresponding grayscale video frame.
-
-## Usage
+## Usage (once weights exist)
 
 ```python
 from neurocodec import decode
-decode("clip.nec", "reconstructed.mp4")
+decode("clip.nec", "reconstructed.mp4", weights_path="decoder_v1.pt")
 ```
-
-Or with the model directly:
 
 ```python
 import torch
 from neurocodec.decoder import load_decoder
 
-model = load_decoder()   # downloads weights automatically
-voxel = torch.zeros(1, 5, 240, 320)   # batch=1, bins=5
-frame = model(voxel)     # (1, 1, H, W)
+model = load_decoder("decoder_v1.pt", n_bins=5)   # raises if the file is missing
+frame = model(torch.zeros(1, 5, 240, 320))        # (1, 1, 240, 320)
+model.reset_state()                               # between unrelated clips
 ```
 
-## Training
+## Training (planned, see `training/train_decoder.ipynb`)
 
-- **Dataset:** DAVIS240C (32 sequences) + dashcam footage
-- **Loss:** 0.5×L1 + 0.5×VGG perceptual (relu2_2)
-- **Optimizer:** AdamW, lr=1e-4, cosine annealing, 50 epochs
-- **Hardware:** Google Colab T4 GPU, ~3 hours
+- **Data:** any videos, or DAVIS240C clips; events are simulated with `DVSSimulator`
+- **Loss:** 0.5×L1 + 0.5×VGG16 perceptual (relu2_2, ImageNet-normalised)
+- **Optimizer:** AdamW, lr=1e-4, cosine annealing; 10 % of sequences held out for validation SSIM
+- **Hardware:** Google Colab T4
 
-## Performance
+## Limitations
 
-| Codec | SSIM @200kbps | PSNR (dB) |
-|-------|--------------|-----------|
-| H.264 | 0.612 | 26.8 |
-| H.265 | 0.641 | 27.9 |
-| AV1   | 0.658 | 28.3 |
-| **NeuroCodec** | **0.703** | **30.1** |
-
-*On dashcam/drone sequences. See paper for full R-D curves.*
+- Events encode changes only; static regions and absolute brightness are not recoverable
+  from events alone.
+- Grayscale output only.
+- Compression of the `.nec` container is not yet competitive with H.264 (see the README).
 
 ## Citation
 
 ```bibtex
 @misc{narayana2026neurocodec,
   title  = {NeuroCodec: Neuromorphic-Inspired Spike-Driven Video Compression
-             with Learned ConvLSTM Reconstruction},
+            with Learned ConvLSTM Reconstruction},
   author = {Narayana, Chandini},
   year   = {2026},
   url    = {https://github.com/chandini-narayana/neurocodec},

@@ -107,7 +107,7 @@ class ConvLSTMCell(nn.Module):
 
 class ConvLSTMStack(nn.Module):
     """
-    A stack of ConvLSTM cells with residual connections between layers.
+    A stack of ConvLSTM cells; each layer's hidden state feeds the next layer.
 
     Parameters
     ----------

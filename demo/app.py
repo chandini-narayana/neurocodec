@@ -36,9 +36,9 @@ logger = logging.getLogger("neurocodec.demo")
 
 # ── Try to import neurocodec (installed or local) ─────────────────────────
 try:
-    from neurocodec import simulate, encode, decode
+    from neurocodec import decode
     from neurocodec.simulator import DVSSimulator, save_event_video
-    from neurocodec.encoder import NECReader, VoxelEncoder, compression_ratio
+    from neurocodec.encoder import VoxelEncoder
     NEUROCODEC_AVAILABLE = True
 except ImportError:
     NEUROCODEC_AVAILABLE = False
@@ -98,20 +98,22 @@ def process_video(
         enc      = VoxelEncoder(threshold=threshold, n_bins=n_bins, k_frac=k_frac)
         stats    = enc.encode(truncated_path, nec_path)
 
-        # ── 4. Decode back to video ───────────────────────────────────
+        # ── 4. Decode back to video (needs trained weights) ───────────
         recon_path = Path(tmpdir) / "reconstructed.mp4"
-        decode(nec_path, recon_path)
+        out_recon, ssim_score, note = None, None, ""
+        try:
+            decode(nec_path, recon_path)
+            ssim_score = _compute_avg_ssim(truncated_path, recon_path, n=30)
+            out_recon = _persist(recon_path)
+        except FileNotFoundError as e:
+            note = f"⚠️ Reconstruction skipped: {e}"
 
-        # ── 5. Compute SSIM ───────────────────────────────────────────
-        ssim_score = _compute_avg_ssim(truncated_path, recon_path, n=30)
-
-        # ── 6. Copy outputs to stable paths ──────────────────────────
-        out_event = "/tmp/nc_events.mp4"
-        out_recon = "/tmp/nc_reconstructed.mp4"
-        shutil.copy(event_vid_path, out_event)
-        shutil.copy(recon_path,     out_recon)
+        # ── 5. Copy outputs out of the temp dir (Gradio serves them later) ──
+        out_event = _persist(event_vid_path)
 
         info = _format_stats(stats, ssim_score, stream, threshold, n_bins, k_frac)
+        if note:
+            info = note + "\n\n" + info
         return out_event, out_recon, info
 
     except Exception as e:
@@ -119,6 +121,14 @@ def process_video(
         return None, None, f"❌ Error: {e}"
     finally:
         shutil.rmtree(tmpdir, ignore_errors=True)
+
+
+def _persist(src: Path) -> str:
+    """Copy ``src`` to a unique file in the system temp dir that outlives the request."""
+    fd, dst = tempfile.mkstemp(prefix="neurocodec_out_", suffix=src.suffix)
+    os.close(fd)
+    shutil.copy(src, dst)
+    return dst
 
 
 def _truncate_video(src: Path, dst: Path, max_frames: int) -> None:
@@ -173,10 +183,12 @@ def _format_stats(stats, ssim, stream, threshold, n_bins, k_frac) -> str:
         f"- Event density: **{stats['event_density']:.4f}**",
         f"- Frames processed: **{stats['n_frames']}**",
         f"- Encoded size: **{stats['file_size_kb']:.1f} KB**",
-        f"- Compression ratio: **{stats['compression_ratio']:.1f}×** vs raw video",
+        f"- Size vs input file: **{stats['compression_ratio']:.2f}×** (values below 1 mean the .nec is larger)",
         "",
         "### Quality",
-        f"- SSIM (30-frame avg): **{ssim:.4f}**" if ssim >= 0 else "- SSIM: *scikit-image not available*",
+        "- SSIM: *n/a (no trained decoder weights available)*" if ssim is None else
+        (f"- SSIM (30-frame avg): **{ssim:.4f}**" if ssim >= 0
+         else "- SSIM: *scikit-image not available*"),
         "",
         "### What you're seeing",
         "- **Left video:** DVS event visualisation — red dots = positive polarity (brighter), "
@@ -228,9 +240,9 @@ No event-camera hardware required — runs entirely on standard video.
                     label="Time Bins B — voxel grid temporal resolution",
                 )
                 k_frac = gr.Slider(
-                    minimum=0.01, maximum=0.5, value=0.1, step=0.01,
-                    label="Top-K fraction — sparsity of encoded voxel",
-                    info="0.1 = keep top 10% of voxel cells by magnitude."
+                    minimum=0.05, maximum=1.0, value=0.5, step=0.05,
+                    label="Top-K fraction — share of non-zero voxel cells kept",
+                    info="0.5 = keep the strongest 50% of active cells."
                 )
                 max_frames = gr.Slider(
                     minimum=10, maximum=150, value=60, step=10,
@@ -257,9 +269,9 @@ No event-camera hardware required — runs entirely on standard video.
 ---
 ### How it works
 1. **DVS Simulator** — detects per-pixel log-intensity changes above threshold C, produces (x, y, t, polarity) events
-2. **Voxel Grid** — accumulates events into a 3-D tensor [B × H × W] over B time bins
-3. **Top-K Sparsification** — keeps only top-K voxel cells, discards the rest
-4. **Entropy Coding** — Huffman-encodes sparse indices+values → .nec binary format
+2. **Voxel Grid** — accumulates the events of the last B frames into a [B × H × W] tensor per frame
+3. **Top-K Sparsification** — keeps the strongest K fraction of non-zero voxel cells
+4. **Entropy Coding** — delta-codes the indices, quantises values to int8 and DEFLATE-compresses each frame → .nec binary format
 5. **ConvLSTM Decoder** — trained neural network reconstructs frames from voxel grids
 
 **Paper:** [arXiv:XXXX.XXXXX](https://arxiv.org/abs/XXXX.XXXXX) |

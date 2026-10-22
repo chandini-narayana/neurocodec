@@ -19,7 +19,7 @@ Open the notebook:
 ## Quick start (local, if you have a GPU)
 
 ```bash
-pip install neurocodec[dev]
+pip install -e ".[train]"
 jupyter notebook training/train_decoder.ipynb
 ```
 
@@ -42,3 +42,14 @@ api.upload_file(
 )
 "
 ```
+
+## Notes on the training setup
+
+- Each training item is `seq_len` consecutive frames; the voxel for frame *i* is paired with
+  frame *i* (voxels use a sliding window of the last `n_bins` frames, exactly as the encoder
+  does). The ConvLSTM state is reset per sequence and gradients flow through all `seq_len` steps.
+- 10 % of sequences are held out; the notebook saves the checkpoint with the best *validation* SSIM.
+- Without video files the notebook falls back to a synthetic gradient — that only smoke-tests
+  the code and will not give a useful model.
+- Events carry no absolute brightness; expect poor results on static scenes unless key-frames
+  are added to the codec.

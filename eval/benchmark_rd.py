@@ -21,7 +21,6 @@ from __future__ import annotations
 import argparse
 import json
 import logging
-import os
 import shutil
 import subprocess
 import tempfile
@@ -89,7 +88,7 @@ def avg_metrics(orig_frames: np.ndarray, recon_frames: np.ndarray) -> Dict[str, 
 
 def get_file_bitrate_kbps(path: str | Path, duration_s: float) -> float:
     size_bits = Path(path).stat().st_size * 8
-    return size_bits / max(duration_s, 1.0) / 1000.0
+    return size_bits / max(duration_s, 1e-6) / 1000.0
 
 
 def get_video_duration(path: str | Path) -> float:
@@ -97,7 +96,7 @@ def get_video_duration(path: str | Path) -> float:
     fps      = cap.get(cv2.CAP_PROP_FPS) or 30.0
     n_frames = cap.get(cv2.CAP_PROP_FRAME_COUNT)
     cap.release()
-    return n_frames / fps
+    return n_frames / fps if n_frames > 0 else 0.0
 
 
 # ---------------------------------------------------------------------------
@@ -150,6 +149,7 @@ def benchmark_neurocodec(
     orig_frames: np.ndarray,
     thresholds: List[float],
     weights_path: Optional[Path] = None,
+    allow_random: bool = False,
 ) -> List[Dict]:
     from neurocodec.encoder import VoxelEncoder, NECReader
     from neurocodec.decoder import load_decoder
@@ -157,25 +157,26 @@ def benchmark_neurocodec(
 
     duration = get_video_duration(video_path)
     device   = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    model    = load_decoder(weights_path, device=device)
+    model    = load_decoder(weights_path, device=device, require_weights=not allow_random)
 
     results = []
     with tempfile.TemporaryDirectory() as tmp:
         for c in thresholds:
             nec_path = Path(tmp) / f"out_c{c:.2f}.nec"
             enc      = VoxelEncoder(threshold=c)
-            stats    = enc.encode(video_path, nec_path)
+            enc.encode(video_path, nec_path)
             bitrate  = get_file_bitrate_kbps(nec_path, duration)
 
-            # Decode
+            # Decode (streaming; only as many frames as we have references for)
             reader = NECReader(nec_path)
-            dense  = reader.to_dense()  # (T, B, H, W)
             recon_frames = []
             model.reset_state()
-            with torch.no_grad():
-                for t in range(dense.shape[0]):
-                    v    = torch.from_numpy(dense[t]).unsqueeze(0).to(device)
-                    pred = model(v).squeeze().cpu().numpy()
+            with torch.inference_mode():
+                for voxel in reader.iter_dense():
+                    if len(recon_frames) >= len(orig_frames):
+                        break
+                    v    = torch.from_numpy(voxel).unsqueeze(0).to(device)
+                    pred = model(v)[0, 0].cpu().numpy()
                     recon_frames.append(pred)
 
             recon_arr = np.array(recon_frames)
@@ -297,6 +298,8 @@ def main() -> None:
                    help="Standard codec bitrates in kbps (comma-separated)")
     p.add_argument("--weights",    default=None,
                    help="Path to decoder weights (.pt)")
+    p.add_argument("--allow-random", action="store_true",
+                   help="Benchmark with a random (untrained) decoder - results are meaningless")
     p.add_argument("--max-frames", type=int, default=150,
                    help="Max frames to load for metrics (default 150)")
     args = p.parse_args()
@@ -317,6 +320,7 @@ def main() -> None:
     all_results += benchmark_neurocodec(
         video_path, orig_frames, thresholds,
         weights_path=Path(args.weights) if args.weights else None,
+        allow_random=args.allow_random,
     )
 
     logger.info("\n=== Standard Codecs ===")
@@ -332,9 +336,9 @@ def main() -> None:
     plot_rd_curve(all_results, output_dir / "rd_curve.pdf")
 
     # Summary table
-    print("\n── Rate-Distortion Summary ────────────────────────────────")
+    print("\n-- Rate-Distortion Summary ----------------------------------")
     print(f"{'Codec':<15} {'Bitrate (kbps)':>16} {'SSIM':>8} {'PSNR (dB)':>10}")
-    print("─" * 55)
+    print("-" * 55)
     for r in sorted(all_results, key=lambda x: (x["codec"], x["bitrate_kbps"])):
         print(f"{r['codec']:<15} {r['bitrate_kbps']:>16.0f} {r['ssim']:>8.4f} {r['psnr']:>10.2f}")
     print()

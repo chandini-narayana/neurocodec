@@ -7,7 +7,7 @@ on:
 
 jobs:
   benchmark:
-    name: Threshold Sweep Benchmark
+    name: Event-density and size sweep (synthetic clip)
     runs-on: ubuntu-latest
 
     steps:
@@ -22,32 +22,34 @@ jobs:
       - name: Install system dependencies
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y --no-install-recommends \
-            libgl1 libglib2.0-0 ffmpeg
+          sudo apt-get install -y --no-install-recommends libgl1 libglib2.0-0
 
-      - name: Install neurocodec
+      - name: Install neurocodec (CPU-only PyTorch)
         run: |
-          pip install --upgrade pip
-          pip install -e ".[dev]"
+          python -m pip install --upgrade pip
+          pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
+          pip install -e .
 
       - name: Generate synthetic test clip
         run: |
           python - <<'EOF'
           import cv2, numpy as np
-          fourcc = cv2.VideoWriter_fourcc(*"mp4v")
-          w = cv2.VideoWriter("/tmp/bench.mp4", fourcc, 30.0, (320, 240))
+          w = cv2.VideoWriter("bench.mp4", cv2.VideoWriter_fourcc(*"mp4v"), 30.0, (320, 240))
           for i in range(150):
               f = np.zeros((240, 320, 3), dtype=np.uint8)
-              x = int((i / 150) * 310)
+              x = int((i / 150) * 290)
               f[80:160, x:x+30] = 255
               w.write(f)
           w.release()
-          print("Synthetic clip created: /tmp/bench.mp4")
           EOF
 
-      - name: Run threshold sweep benchmark
+      - name: Threshold sweep (events) and encoded size
         run: |
-          neurocodec benchmark /tmp/bench.mp4 --output benchmark_results.json
+          neurocodec benchmark bench.mp4 --output benchmark_results.json
+          for c in 0.1 0.2 0.5; do
+            neurocodec encode bench.mp4 bench_$c.nec --threshold $c
+          done
+          ls -l bench_*.nec
           cat benchmark_results.json
 
       - name: Upload benchmark artifact
