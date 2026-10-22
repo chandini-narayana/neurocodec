@@ -11,12 +11,18 @@ Open the notebook:
 
 ## Dataset
 
-The decoder trains on ordinary videos; events are simulated from them. The notebook
-downloads **UCF101** (~6.9 GB, 13k clips at 320x240, research use,
-https://www.crcv.ucf.edu/data/UCF101.php) and keeps a random subset of `MAX_UCF_CLIPS`
-(default 3000). Add your own clips (best: footage like your target, e.g. dashcam) to
-`/content/videos/extra`. Other sources: Xiph.org test sequences, Pexels/Pixabay free
-videos, BDD100K (free account). Hold a few clips out entirely for the final benchmark.
+The decoder trains on ordinary videos; events are simulated from them. The notebook's
+`SOURCE` setting picks the data:
+
+- `'subset'` (default): 405 UCF101 clips from 10 classes, 171 MB
+  (Hugging Face `sayakpaul/ucf101-subset`). Enough for a first model and a quick test.
+- `'full'`: all of UCF101, a 6.9 GB RAR (13k clips at 320x240, research use,
+  https://www.crcv.ucf.edu/data/UCF101.php); `MAX_UCF_CLIPS` keeps a random subset.
+- `'none'`: only your own clips.
+
+Add your own clips (best: footage like your target, e.g. dashcam) to `/content/videos/extra`.
+Other sources: Xiph.org test sequences, Pexels/Pixabay free videos, BDD100K (free account).
+Hold a few clips out entirely for the final benchmark.
 
 ## Quick start (local, if you have a GPU)
 
