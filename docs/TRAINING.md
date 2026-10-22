@@ -3,7 +3,7 @@
 ## Overview
 
 The decoder is trained on Google Colab (free T4 GPU).
-Full training takes ~3 hours for 50 epochs on the DAVIS240C dataset.
+Full training takes ~3 hours for 50 epochs on a few thousand clips.
 
 Open the notebook:
 
@@ -11,10 +11,12 @@ Open the notebook:
 
 ## Dataset
 
-**DAVIS240C** — Dynamic and Active-pixel Vision Sensor dataset.
-- 240×180 resolution, 40+ sequences, ~6.5 GB
-- Download: https://rpg.ifi.uzh.ch/davis_data.html
-- License: Creative Commons Attribution 4.0
+The decoder trains on ordinary videos; events are simulated from them. The notebook
+downloads **UCF101** (~6.9 GB, 13k clips at 320x240, research use,
+https://www.crcv.ucf.edu/data/UCF101.php) and keeps a random subset of `MAX_UCF_CLIPS`
+(default 3000). Add your own clips (best: footage like your target, e.g. dashcam) to
+`/content/videos/extra`. Other sources: Xiph.org test sequences, Pexels/Pixabay free
+videos, BDD100K (free account). Hold a few clips out entirely for the final benchmark.
 
 ## Quick start (local, if you have a GPU)
 
