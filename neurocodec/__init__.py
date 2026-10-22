@@ -27,12 +27,12 @@ __license__ = "MIT"
 __year__ = "2026"
 
 from neurocodec.simulator import DVSSimulator, simulate
-from neurocodec.encoder import VoxelEncoder, encode
+from neurocodec.encoder import VoxelGrid, VoxelEncoder, encode
 from neurocodec.decoder import ConvLSTMDecoder, decode
 
 __all__ = [
     "DVSSimulator", "simulate",
-    "VoxelEncoder", "encode",
+    "VoxelGrid", "VoxelEncoder", "encode",
     "ConvLSTMDecoder", "decode",
     "__version__",
 ]

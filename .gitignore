@@ -13,32 +13,25 @@ dist/
 venv/
 env/
 .env
-.venv/
-__pycache__/
-*.pyc
-*.mp4
-*.nec
-*.pt
-*.pth
+
 # PyTorch / model artefacts
 *.pt
 *.pth
 *.onnx
 *.safetensors
-neurocodec/weights/decoder_v1.pt
 
-# Data / video files
+# Data / video files (demo example clips are allowed)
 *.mp4
 *.avi
 *.mov
 *.mkv
 *.nec
+!demo/examples/*.mp4
 data/
 datasets/
 
 # Jupyter
 .ipynb_checkpoints/
-*.ipynb_checkpoints
 
 # Eval results (generated)
 eval/results/
@@ -57,7 +50,7 @@ paper/*.fdb_latexmk
 paper/_minted*/
 paper/*.pdf
 
-# OS
+# OS / editors
 .DS_Store
 Thumbs.db
 .idea/
@@ -65,10 +58,11 @@ Thumbs.db
 *.swp
 *.swo
 
-# Coverage
+# Coverage / caches
 .coverage
 htmlcov/
 .pytest_cache/
+.ruff_cache/
 
 # Distribution
 *.whl

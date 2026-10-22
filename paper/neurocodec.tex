@@ -43,6 +43,8 @@
 }
 
 \maketitle
+\noindent\textbf{\textcolor{red}{DRAFT --- all numerical results in the tables below (R-D, ablation, runtime) are placeholders and have NOT been measured. The abstract and conclusion claims are hypotheses to be tested.}}
+
 
 % ── Abstract ──────────────────────────────────────────────────────────────
 \begin{abstract}
@@ -160,10 +162,10 @@ by dividing time into $B = 5$ equal bins and summing event polarities:
 \begin{equation}
   \mathbf{V}[b, y, x] = \sum_{\{e : b_e = b\}} p_e \cdot \delta_{x_e, x} \cdot \delta_{y_e, y}
 \end{equation}
-The voxel is $\ell_\infty$-normalised to $[-1, 1]$.
-Top-$K$ sparsification retains the $K\%$ cells with largest absolute values
-and sets the rest to zero ($K = 10\%$ default).
-Sparse (index, value) pairs are Huffman-entropy coded and stored in the
+The voxel for frame $t$ covers the last $B$ frames (bin $b$ holds the events of frame $t-B+1+b$) and is $\ell_\infty$-normalised to $[-1, 1]$.
+Top-$K$ sparsification retains the $K\%$ of non-zero cells with largest absolute values
+and sets the rest to zero ($K = 50\%$ default).
+Sparse (index, value) pairs are delta-coded, int8-quantised and DEFLATE-compressed per frame, and stored in the
 \texttt{.nec} binary format (§\ref{sec:method:nec}).
 
 \paragraph{.nec binary format.}
@@ -173,13 +175,14 @@ Sparse (index, value) pairs are Huffman-entropy coded and stored in the
 \begin{tabular}{@{}lll@{}}
 \toprule
 Offset & Type & Field \\ \midrule
-0      & 4 bytes & Magic: \texttt{NEC\textbackslash x01} \\
+0      & 4 bytes & Magic: \texttt{NEC\textbackslash x02} \\
 4      & uint16  & Width \\
 6      & uint16  & Height \\
 8      & uint8   & Bins $B$ \\
 9      & float32 & Threshold $C$ \\
 13     & uint32  & Frame count \\
-$17+$  & per-frame & Sparse (index, value) pairs \\ \bottomrule
+17     & float32 & Frames per second \\
+$21+$  & per-frame & zlib-compressed sparse (index, value) record \\ \bottomrule
 \end{tabular}
 \end{table}
 
@@ -240,7 +243,7 @@ NeuroCodec bitrates are obtained by sweeping $C \in \{0.05, 0.1, 0.2, 0.3, 0.5, 
 \begin{table}[h]
 \centering
 \small
-\caption{SSIM at $\approx$200\,kbps on dashcam sequences.}
+\caption{[PLACEHOLDER, not measured] SSIM at $\approx$200\,kbps on dashcam sequences.}
 \label{tab:rd}
 \begin{tabular}{@{}lcc@{}}
 \toprule
@@ -258,7 +261,7 @@ AV1             & 0.658 & 28.3 \\
 \begin{table}[h]
 \centering
 \small
-\caption{Ablation on event threshold $C$ (dashcam, 200\,kbps).}
+\caption{[PLACEHOLDER, not measured] Ablation on event threshold $C$ (dashcam, 200\,kbps).}
 \label{tab:ablation}
 \begin{tabular}{@{}lccc@{}}
 \toprule
@@ -277,7 +280,7 @@ $C$ & Events/frame & SSIM & Bitrate (kbps) \\ \midrule
 \begin{table}[h]
 \centering
 \small
-\caption{Decoding latency per frame on Intel Core i7-12700.}
+\caption{[PLACEHOLDER, not measured] Decoding latency per frame on Intel Core i7-12700.}
 \begin{tabular}{@{}lcc@{}}
 \toprule
 Backend & Mean (ms) & P99 (ms) \\ \midrule

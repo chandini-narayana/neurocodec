@@ -3,9 +3,8 @@
 """Tests for ConvLSTM decoder."""
 
 import torch
-import pytest
 
-from neurocodec.decoder import ConvLSTMDecoder, CombinedLoss
+from neurocodec.decoder import ConvLSTMDecoder
 from neurocodec.convlstm import ConvLSTMCell, ConvLSTMStack
 
 

@@ -8,7 +8,7 @@ version = "0.1.0"
 description = "Neuromorphic-inspired spike-driven video codec: DVS event simulation, learned entropy encoding, and ConvLSTM frame reconstruction."
 readme = "README.md"
 license = { file = "LICENSE" }
-authors = [{ name = "Chandini Narayana", email = "chandininarayana@example.com" }]
+authors = [{ name = "Chandini Narayana" }]
 keywords = ["neuromorphic", "video-compression", "event-camera", "dvs", "convlstm", "codec"]
 classifiers = [
     "Development Status :: 3 - Alpha",
@@ -31,8 +31,12 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-demo = ["gradio>=4.0"]
-dev  = ["pytest>=7.0", "pytest-cov", "hatch", "twine"]
+demo    = ["gradio>=4.0"]
+eval    = ["matplotlib>=3.7"]
+onnx    = ["onnx>=1.14", "onnxruntime>=1.16"]
+train   = ["jupyter", "matplotlib>=3.7"]
+dev     = ["pytest>=7.0", "pytest-cov", "ruff"]
+release = ["hatch", "twine"]
 
 [project.scripts]
 neurocodec = "neurocodec.cli:main"
@@ -49,3 +53,9 @@ packages = ["neurocodec"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts   = "-v --tb=short"
+
+[tool.ruff]
+line-length = 110
+
+[tool.ruff.lint]
+select = ["E9", "F"]

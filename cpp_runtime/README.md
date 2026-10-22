@@ -1,71 +1,43 @@
 # NeuroCodec C++ ONNX Runtime
 
-CPU-native decoder that runs `decoder.onnx` without Python.
-Achieves 2–5× faster inference than the PyTorch path.
+CPU-native decoder that runs the exported `decoder.onnx` without Python. Reads `.nec`
+v1 and v2 files (v2 needs zlib). **Not yet compiled or benchmarked in CI**; no speed-up
+figure is claimed until it has been measured.
 
 ## Prerequisites
 
-- CMake ≥ 3.18
-- C++17 compiler (GCC ≥ 9, Clang ≥ 10, MSVC 2019)
-- Internet connection (CMake fetches ONNX Runtime automatically)
+- CMake ≥ 3.18, C++17 compiler (GCC ≥ 9, Clang ≥ 10, MSVC 2019), zlib development files
+- Either internet access (CMake downloads the official prebuilt ONNX Runtime for your
+  platform) or an existing install passed as `-DORT_ROOT=/path/to/onnxruntime`
+
+## Export the model from Python first
+
+The export is a *single recurrent step*: inputs `voxel`, `h0`, `c0`, `h1`, `c1`, …, outputs
+`frame`, `h0_out`, `c0_out`, …. `nc_decode` keeps the ConvLSTM state and feeds it back
+each frame, so results match the PyTorch decoder.
+
+```bash
+pip install -e ".[onnx]"
+python eval/export_onnx.py --weights decoder_v1.pt --output decoder.onnx --height 270 --width 480
+```
+
+The script also checks the ONNX graph against PyTorch over three stateful frames.
 
 ## Build
 
 ```bash
 cd cpp_runtime
-mkdir build && cd build
-cmake .. -DCMAKE_BUILD_TYPE=Release
-cmake --build . --config Release -j4
+cmake -B build -DCMAKE_BUILD_TYPE=Release
+cmake --build build --config Release -j4
 ```
 
-The binary is at `build/nc_decode` (Linux/Mac) or `build/Release/nc_decode.exe` (Windows).
-
-## Export the model from Python first
-
-```python
-from neurocodec.decoder import ConvLSTMDecoder
-import torch
-
-model = ConvLSTMDecoder(n_bins=5)
-# load weights: model.load_state_dict(torch.load("decoder_v1.pt")["model_state_dict"])
-model.eval()
-
-dummy = torch.zeros(1, 5, 240, 320)   # batch=1, bins=5, H=240, W=320
-torch.onnx.export(
-    model, dummy, "decoder.onnx",
-    input_names=["voxel"],
-    output_names=["frame"],
-    dynamic_axes={"voxel": {0: "batch", 2: "H", 3: "W"},
-                  "frame": {0: "batch", 2: "H", 3: "W"}},
-    opset_version=17,
-)
-print("Exported decoder.onnx")
-```
+The binary is `build/nc_decode` (Linux/macOS) or `build/Release/nc_decode.exe` (Windows).
 
 ## Usage
 
 ```bash
-# Decode .nec → PGM frames
-./build/nc_decode --model decoder.onnx --input clip.nec --output frames/
-
-# Benchmark latency (no output written)
-./build/nc_decode --model decoder.onnx --input clip.nec --benchmark
+./build/nc_decode --model decoder.onnx --input clip.nec --output frames/   # PGM frames
+./build/nc_decode --model decoder.onnx --input clip.nec --benchmark        # latency only
 ```
 
-## Expected output
-
-```
-Loading clip.nec...
-  Resolution: 640x480
-  Bins:       5
-  Frames:     150
-  Threshold:  0.20
-
-── Benchmark ──────────────────────────────────
-  Frames decoded : 150
-  Mean latency   : 34.2 ms
-  P50 latency    : 33.8 ms
-  P99 latency    : 41.1 ms
-  Throughput     : 29.2 fps
-────────────────────────────────────────────────
-```
+`--benchmark` reports the ONNX model run time per frame (not .nec parsing or PGM writing).
