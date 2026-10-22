@@ -1,4 +1,4 @@
-# NeuroCodec 🧠⚡
+# NeuroCodec 
 
 **Neuromorphic-Inspired Spike-Driven Video Compression (research prototype)**
 
@@ -155,6 +155,17 @@ pytest
   note   = {Work in progress}
 }
 ```
+
+---
+
+## Links
+
+Planned locations; not all of these are live yet (the package is not on PyPI and there is no arXiv id or released model).
+
+-  **Live Demo:** [huggingface.co/spaces/chandininarayana/neurocodec](https://huggingface.co/spaces/chandininarayana/neurocodec)
+-  **PyPI:** [pypi.org/project/neurocodec](https://pypi.org/project/neurocodec/)
+-  **Paper:** [arXiv:XXXX.XXXXX](https://arxiv.org/abs/XXXX.XXXXX)
+-  **Model:** [huggingface.co/chandininarayana/neurocodec](https://huggingface.co/chandininarayana/neurocodec)
 
 ---
 
