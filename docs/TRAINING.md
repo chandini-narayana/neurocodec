@@ -3,7 +3,9 @@
 ## Overview
 
 The decoder is trained on Google Colab (free T4 GPU).
-Full training takes ~3 hours for 50 epochs on a few thousand clips.
+Training time depends on the GPU and on `steps_per_epoch` / `n_epochs` in the config cell; the loop
+prints seconds per step so you can estimate it. With the defaults (20 epochs x 300 steps) expect
+tens of minutes to a few hours on a T4. Without a GPU it is impractically slow.
 
 Open the notebook:
 
